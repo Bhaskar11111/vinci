@@ -13,20 +13,35 @@ export const createPod = async (sandboxId) => {
         spec: {
             volumes:[
                 {
-                    name:'workspace_volume',
+                    name:'workspace-volume',
                     emptyDir:{}
+                }
+            ],
+            initContainers:[
+                {
+                    name:'init-container',
+                    image:'template',
+                    imagePullPolicy:'IfNotPresent',
+                    command: ['sh', '-c', 'cp -r /workspace/. /seed/'],
+                    volumeMounts:[
+                        {
+                            name:'workspace-volume',
+                            mountPath:'/seed'
+                        }
+                    ]
+
                 }
             ],
             containers: [
                 {
-                    image: 'template',
-                    imagePullPolicy: 'IfNotPresent',
-                    name: 'sandbox-container',
+                    image:'template',
+                    imagePullPolicy:'IfNotPresent',
+                    name:'sandbox-container',
 
                     ports: [
                         {
                             containerPort: 5173,
-                            name: 'http'
+                            name:'http'
                         }
                     ],
 
@@ -42,7 +57,7 @@ export const createPod = async (sandboxId) => {
                     },
                     volumeMounts:[
                         {
-                            name:'workspace_volume',
+                            name:'workspace-volume',
                             mountPath: '/workspace'
                         }
                     ]
@@ -69,7 +84,7 @@ export const createPod = async (sandboxId) => {
                     },
                     volumeMounts:[
                         {
-                            name:'workspace_volume',
+                            name:'workspace-volume',
                             mountPath: '/workspace'
                         }
                     ]
