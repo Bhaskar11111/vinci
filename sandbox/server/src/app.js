@@ -10,6 +10,8 @@ app.use(express.json())
 app.use(morgan('dev'))
 app.use(express.urlencoded({extended:true}))
 
+
+//sandbox health api
 app.get('/api/sandbox/health',(req,res)=>
 {
     res.status(200).json({
@@ -18,6 +20,8 @@ app.get('/api/sandbox/health',(req,res)=>
     })
 })
 
+
+//sandbox create api
 app.post('/api/sandbox/create',(async(req,res)=>
 {
     const sandboxId=uuid();

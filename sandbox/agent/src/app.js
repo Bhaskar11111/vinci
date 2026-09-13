@@ -2,6 +2,10 @@ import express, { urlencoded } from 'express'
 import morgan from 'morgan'
 import fs from 'fs'
 import path from 'path';
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+
+const execFileAsync = promisify(execFile)
 
 const app=express();
 
@@ -175,5 +179,47 @@ app.post('/create-files',(async(req,res)=>
     })
 
 }))
+
+//install-dependencies api
+app.post('/install-dependencies', async (req, res) => {
+    try {
+        const { packages = [] } = req.body
+
+        if (!Array.isArray(packages)) {
+            return res.status(400).json({
+                message: 'Invalid request. "packages" must be an array',
+                status: 'error'
+            })
+        }
+
+        const args = packages.length > 0
+            ? ['install', ...packages]
+            : ['install']
+
+        const { stdout, stderr } = await execFileAsync(
+            'npm',
+            args,
+            {
+                cwd: WORKING_DIR
+            }
+        )
+
+        return res.status(200).json({
+            message: 'Dependencies installed successfully',
+            status: 'success',
+            stdout,
+            stderr
+        })
+
+    } catch (err) {
+        return res.status(500).json({
+            message: 'Failed to install dependencies',
+            status: 'error',
+            error: err.message,
+            stdout: err.stdout,
+            stderr: err.stderr
+        })
+    }
+})
 
 export default app;

@@ -17,7 +17,7 @@ export const listFiles=tool(async({})=>
   'http://127.0.0.1/list-files',
   {
     headers: {
-      Host: '01a09b0d-b734-71b6-b1ed-8e48f584fc7e.agent.localhost'
+      Host: '01a09ced-9644-70ae-8680-15467a5d1916.agent.localhost'
     }
   }
 )
@@ -52,7 +52,7 @@ export const readFiles = tool(async ({ files }) => {
             'http://127.0.0.1/read-files?files=' + files.join(','),
             {
                 headers: {
-                    Host: '01a09b0d-b734-71b6-b1ed-8e48f584fc7e.agent.localhost'
+                    Host: '01a09ced-9644-70ae-8680-15467a5d1916.agent.localhost'
                 }
             }
         )
@@ -94,7 +94,7 @@ export const updateFiles=tool(async({files})=>
         },
         {
             headers: {
-                Host: '01a09b0d-b734-71b6-b1ed-8e48f584fc7e.agent.localhost'
+                Host: '01a09ced-9644-70ae-8680-15467a5d1916.agent.localhost'
             }
         }
     )
@@ -112,3 +112,55 @@ export const updateFiles=tool(async({files})=>
     })
 })
 
+// install-dependencies tool
+export const installDependencies = tool(async ({ packages }) => {
+
+    console.log('===========================')
+    console.log('USING INSTALL DEPENDENCIES TOOL')
+    console.log('PACKAGES:', packages)
+    console.log('===========================')
+
+    try {
+
+        const response = await axios.post(
+            'http://127.0.0.1/install-dependencies',
+            {
+                packages: packages
+            },
+            {
+                headers: {
+                    Host: '01a09ced-9644-70ae-8680-15467a5d1916.agent.localhost'
+                }
+            }
+        )
+
+        console.log('===========================')
+        console.log('DEPENDENCIES INSTALL RESPONSE:')
+        console.log(response.data)
+        console.log('===========================')
+
+        return JSON.stringify(response.data)
+
+    } catch (error) {
+
+        console.log('===========================')
+        console.log('INSTALL DEPENDENCIES ERROR:')
+        console.log(error.message)
+        console.log(error.response?.data)
+        console.log('===========================')
+
+        throw error
+    }
+
+}, {
+    name: 'install_dependencies',
+
+    description:
+        'Install npm dependencies required by the project. Use this tool when the project needs npm packages that are not currently installed. Pass the package names that need to be installed.',
+
+    schema: z.object({
+        packages: z.array(
+            z.string().describe('The npm package name to install')
+        ).describe('List of npm packages that need to be installed')
+    })
+})
