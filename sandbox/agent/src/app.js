@@ -1,0 +1,225 @@
+import express, { urlencoded } from 'express'
+import morgan from 'morgan'
+import fs from 'fs'
+import path from 'path';
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+
+const execFileAsync = promisify(execFile)
+
+const app=express();
+
+const WORKING_DIR='/workspace'
+
+app.use(express.json())
+app.use(express.urlencoded({extended:true}))
+app.use(morgan('dev'))
+
+app.get('/',(req,res)=>
+{
+    res.status(200).json({
+        message:'Hello from sandbox agent',
+        status:'success'
+    })
+})
+
+//list-files api (doesn't include node_modules, .git, dist, .env)
+app.get('/list-files',(async(req,res)=>
+{
+    const listFiles=(async(dir,baseDir)=>
+    {
+        const entries=await fs.promises.readdir(dir,{withFileTypes:true})
+        const files=[];
+
+        for(const entry of entries)
+        {
+            const fullPath=path.join(dir,entry.name)
+            const relativePath=path.relative(baseDir,fullPath)
+
+            //exclude certain directories
+            if(entry.isDirectory()&&['node_modules','.git','dist','.env'].includes(entry.name)){
+                continue;
+            }
+            if(entry.isDirectory()){
+                files.push(...await listFiles(fullPath,baseDir))
+            }
+            else{
+                files.push(relativePath)
+            }
+        }
+
+        return files;
+    })
+
+    try{
+        const files=await listFiles(WORKING_DIR, WORKING_DIR)
+        res.status(200).json({
+            message:'Files listed successfully',
+            files
+        })
+    }
+    catch(err){
+        res.status(500).json({
+            message:`Error listing files: ${err.message}`,
+            status:'error'
+        })
+    }
+
+}))
+
+//read-files api
+app.get('/read-files',(async(req,res)=>
+{
+    const files=req.query.files
+
+    if(!files)
+    {
+        return res.status(400).json({
+            message:'No files specifies in query parameter',
+            status:'error'
+        })
+    }
+
+    const fileList=files.split(',');
+
+    const results=await Promise.all(fileList.map(async(elem,indx)=>
+    {
+        const filePath=path.join(WORKING_DIR,elem)
+        
+        try{
+            const content=await fs.promises.readFile(filePath,'utf-8')
+            return{
+                [filePath.replace(WORKING_DIR,'')]:content
+            }
+        }
+        catch(err){
+            return{
+                [filePath.replace(WORKING_DIR,'')]:`Error reading file: ${err.message}`
+            }
+        }
+    }))
+
+    return res.status(200).json({
+        message:'File contents',
+        results
+    })
+}))
+
+//update-files api
+app.patch('/update-files',(async(req,res)=>
+{
+    const updates=req.body.updates;
+
+    if(!updates || !Array.isArray(updates))
+    {
+        return res.status(400).json({
+            message:'Invalid request body. Expected a JSON body with "updates" property containing an array of file updates',
+            status:'error'
+        })
+    }
+
+    const results=await Promise.all(updates.map(async(elem,indx)=>
+    {
+        const{file,content}=elem;
+        const filePath=path.join(WORKING_DIR,file)
+        try{
+            await fs.promises.writeFile(filePath,content,'utf-8')
+            return{
+                [filePath]:'File updated successfully'
+            }
+        }
+        catch(err){
+            return{
+                [filePath]:`Error updating file: ${err.message}`
+            }
+        }
+    }))
+
+    res.status(200).json({
+        message:'File update results',
+        results
+    })
+
+}))
+
+//create-files api
+app.post('/create-files',(async(req,res)=>
+{
+    const files=req.body.files;
+
+    if(!files || !Array.isArray(files))
+    {
+        return res.status(400).json({
+            message:'Invalid request body. Expected a JSON body with "files" property containing an array of file updates',
+            status:'error'
+        })
+    }
+
+    const results=await Promise.all(files.map(async(elem,indx)=>
+    {
+        const{file,content}=elem
+        const filePath=path.join(WORKING_DIR,file)
+        try{
+            await fs.promises.mkdir(path.dirname(filePath),{recursive:true})
+            await fs.promises.writeFile(filePath,content,'utf-8')
+            return{
+                [filePath]:'File created successfully'
+            }
+        }
+        catch(err){
+            return{
+                [filePath]:`Error creating file: ${err.message}`
+            }
+        }
+    }))
+
+    res.status(200).json({
+        message:'File creation results',
+        results
+    })
+
+}))
+
+//install-dependencies api
+app.post('/install-dependencies', async (req, res) => {
+    try {
+        const { packages = [] } = req.body
+
+        if (!Array.isArray(packages)) {
+            return res.status(400).json({
+                message: 'Invalid request. "packages" must be an array',
+                status: 'error'
+            })
+        }
+
+        const args = packages.length > 0
+            ? ['install', ...packages]
+            : ['install']
+
+        const { stdout, stderr } = await execFileAsync(
+            'npm',
+            args,
+            {
+                cwd: WORKING_DIR
+            }
+        )
+
+        return res.status(200).json({
+            message: 'Dependencies installed successfully',
+            status: 'success',
+            stdout,
+            stderr
+        })
+
+    } catch (err) {
+        return res.status(500).json({
+            message: 'Failed to install dependencies',
+            status: 'error',
+            error: err.message,
+            stdout: err.stdout,
+            stderr: err.stderr
+        })
+    }
+})
+
+export default app;

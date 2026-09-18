@@ -1,0 +1,47 @@
+apiVersion: skaffold/v4beta13
+kind: Config
+
+build:
+  artifacts:
+
+    - image: ai-orchestration
+      context: ai-orchestration
+      docker:
+        dockerfile: dockerfile
+      sync:
+        infer:
+          - 'src/**'
+          
+
+    - image: agent
+      context: sandbox/agent
+      docker:
+        dockerfile: dockerfile
+      sync:
+        infer:
+          - 'src/**'
+        
+    - image: sandbox
+      context: sandbox/server
+      docker:
+        dockerfile: dockerfile
+      sync:
+        manual:
+          - src: 'src/**'
+            dest: /app/src
+        
+    - image: template
+      context: sandbox/template
+      docker:
+        dockerfile: dockerfile
+
+manifests:
+  rawYaml:
+    - k8s/ai-deployment.yaml
+    - k8s/ai-service.yaml
+    - k8s/sandbox-deployment.yaml
+    - k8s/sandbox-service.yaml
+    - k8s/router-deployment.yaml
+    - k8s/router-service.yaml
+    - k8s/ingress.yaml
+    # - k8s/rbac.yaml
