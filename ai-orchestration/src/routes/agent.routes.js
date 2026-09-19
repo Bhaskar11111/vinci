@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { response, Router } from "express";
 import agent from '../agents/code.agent.js'
 const agentRouter=Router()
 
@@ -10,7 +10,13 @@ agentRouter.post('/invoke', async (req, res) => {
     try {
         const { message, projectId } = req.body
 
-        const response = await agent.invoke(
+        res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+
+        const stream = await agent.stream(
             {
                 messages: [
                     {
@@ -22,11 +28,20 @@ agentRouter.post('/invoke', async (req, res) => {
             {
                 context: {
                     projectId
-                }
+                },
+                streamMode: 'custom'
             }
         )
 
-        res.json({ response })
+        for await (const chunk of stream) {
+            console.log('CUSTOM STREAM:', chunk)
+            res.write(`data: ${chunk}\n\n`)
+        }
+
+        res.json({
+            status: 'success',
+            // stream
+        })
 
     } catch (err) {
         console.error('Error invoking agent:', err)

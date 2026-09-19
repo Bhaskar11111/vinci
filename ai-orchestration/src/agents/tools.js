@@ -7,31 +7,37 @@ import { fi } from "zod/v4/locales";
 //list-files tool
 export const listFiles = tool(async ({}, config) => {
 
-    console.log('===========================')
-    console.log('using list files tool')
-    console.log('===========================')
+    // console.log('===========================')
+    // console.log('using list files tool')
+    // console.log('===========================')
 
+    const writer=config.writer
+
+    
     try {
-
+        
         const projectId = config.context.projectId
+        
+        writer('Listing files in project directory...\n')
 
         const response = await axios.get(
             `http://sandbox-service-${projectId}:3000/list-files`
         )
+        writer('Files listed successfully.\n')
 
-        console.log('===========================')
-        console.log('response from the list files tool:', response.data)
-        console.log('===========================')
+        // console.log('===========================')
+        // console.log('response from the list files tool:', response.data)
+        // console.log('===========================')
 
         return response.data.files
 
     } catch (error) {
 
-        console.log('===========================')
-        console.log('list files error:')
+        // console.log('===========================')
+        // console.log('list files error:')
         console.log(error.message)
-        console.log(error.response?.data)
-        console.log('===========================')
+        // console.log(error.response?.data)
+        // console.log('===========================')
 
         throw error
     }
@@ -44,27 +50,34 @@ export const listFiles = tool(async ({}, config) => {
 
 //read-files tool
 export const readFiles = tool(async ({ files },config) => {
-    console.log('===========================')
-    console.log('using read files tool')
-    console.log('files:', files)
-    console.log('===========================')
+
+    const writer=config.writer
+
+    writer('Reading files...\n')
+
+    // console.log('===========================')
+    // console.log('using read files tool')
+    // console.log('files:', files)
+    // console.log('===========================')
 
     try {
             const projectId = config.context.projectId
         const response = await axios.get(
             `http://sandbox-service-${projectId}:3000/read-files?files=` + files.join(','))
 
-        console.log('===========================')
-        console.log('response from read files tool:', response.data)
-        console.log('===========================')
+            writer('Files read successfully.\n')
+
+        // console.log('===========================')
+        // console.log('response from read files tool:', response.data)
+        // console.log('===========================')
 
         return JSON.stringify(response.data)
     } catch (error) {
-        console.log('===========================')
-        console.log('read files error:')
+        // console.log('===========================')
+        // console.log('read files error:')
         console.log(error.message)
-        console.log(error.response?.data)
-        console.log('===========================')
+        // console.log(error.response?.data)
+        // console.log('===========================')
 
         throw error
     }
@@ -79,11 +92,16 @@ export const readFiles = tool(async ({ files },config) => {
 //update-files/create-files tool
 export const updateFiles=tool(async({files},config)=>
 {
+
+    const writer=config.writer
+
+    writer('Updating files...\n')
+
    const projectId = config.context.projectId
-    console.log('===========================')
-    console.log('using update files tool')
-    console.log('FILES:', files)
-    console.log('===========================')
+    // console.log('===========================')
+    // console.log('using update files tool')
+    // console.log('FILES:', files)
+    // console.log('===========================')
 
     const response=await axios.patch(
         `http://sandbox-service-${projectId}:3000/update-files`,
@@ -91,6 +109,7 @@ export const updateFiles=tool(async({files},config)=>
             updates: files
         }
     )
+    writer('Files updated successfully.\n')
 
     return JSON.stringify({
     status: 'success',
@@ -111,10 +130,14 @@ export const updateFiles=tool(async({files},config)=>
 // install-dependencies tool
 export const installDependencies = tool(async ({ packages },config) => {
 
-    console.log('===========================')
-    console.log('USING INSTALL DEPENDENCIES TOOL')
-    console.log('PACKAGES:', packages)
-    console.log('===========================')
+    const writer=config.writer
+
+    writer('Installing dependencies in directory...\n')
+
+    // console.log('===========================')
+    // console.log('USING INSTALL DEPENDENCIES TOOL')
+    // console.log('PACKAGES:', packages)
+    // console.log('===========================')
 
     try {
             const projectId = config.context.projectId
@@ -125,21 +148,22 @@ export const installDependencies = tool(async ({ packages },config) => {
                 packages: packages
             }
         )
+        writer('Dependencies installed successfully.\n')
 
-        console.log('===========================')
-        console.log('DEPENDENCIES INSTALL RESPONSE:')
-        console.log(response.data)
-        console.log('===========================')
+        // console.log('===========================')
+        // console.log('DEPENDENCIES INSTALL RESPONSE:')
+        // console.log(response.data)
+        // console.log('===========================')
 
         return JSON.stringify(response.data)
 
     } catch (error) {
 
-        console.log('===========================')
-        console.log('INSTALL DEPENDENCIES ERROR:')
-        console.log(error.message)
+        // console.log('===========================')
+        // console.log('INSTALL DEPENDENCIES ERROR:')
+        // console.log(error.message)
         console.log(error.response?.data)
-        console.log('===========================')
+        // console.log('===========================')
 
         throw error
     }
