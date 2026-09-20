@@ -23,7 +23,7 @@ export const listFiles = tool(async ({}, config) => {
         const response = await axios.get(
             `http://sandbox-service-${projectId}:3000/list-files`
         )
-        writer('Files listed successfully.\n')
+        writer('Files listed successfully. '+'Files: '+response.data.files.join(",")+'\n')
 
         // console.log('===========================')
         // console.log('response from the list files tool:', response.data)
@@ -53,7 +53,7 @@ export const readFiles = tool(async ({ files },config) => {
 
     const writer=config.writer
 
-    writer('Reading files...\n')
+    writer('Reading files... '+files.join(",")+'\n')
 
     // console.log('===========================')
     // console.log('using read files tool')
@@ -95,7 +95,7 @@ export const updateFiles=tool(async({files},config)=>
 
     const writer=config.writer
 
-    writer('Updating files...\n')
+    writer('Updating files... '+files.map(elem=>elem.file).join(",")+'\n')
 
    const projectId = config.context.projectId
     // console.log('===========================')
