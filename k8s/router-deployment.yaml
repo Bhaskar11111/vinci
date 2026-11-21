@@ -20,7 +20,9 @@ spec:
 
     spec:
       containers:
-        - image: router
+        - image: router:latest
+          # This is a local development image built from sandbox/router.
+          imagePullPolicy: IfNotPresent
           name: router-container
 
           resources:

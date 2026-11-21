@@ -11,6 +11,14 @@ build:
       sync:
         infer:
           - 'src/**'
+
+    - image: router
+      context: sandbox/router
+      docker:
+        dockerfile: dockerfile
+      sync:
+        infer:
+          - 'src/**'
           
 
     - image: agent
