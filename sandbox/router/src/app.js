@@ -54,6 +54,16 @@ const getAgentProxy=(sandboxId)=>
     return agentProxies[sandboxId];
 }
 
+export const proxyForHost = (host) => {
+    const [sandboxId, subdomain] = host.split('.')
+
+    if (!sandboxId) return null
+    if (subdomain === 'agent') return getAgentProxy(sandboxId)
+    if (subdomain === 'preview') return getProxy(sandboxId)
+
+    return null
+}
+
 app.use((req, res, next) => {
     const host = req.hostname;
 
@@ -63,15 +73,9 @@ app.use((req, res, next) => {
         });
     }
 
-    const sandboxId = host.split('.')[0];
-    if(host.split('.')[1]==='agent')
-    {
-        return getAgentProxy(sandboxId)(req, res, next)
-    }
+    const proxy = proxyForHost(host)
+    if (proxy) return proxy(req, res, next)
 
-    else if(host.split('.')[1]==='preview')
-    {
-        return getProxy(sandboxId)(req, res, next);
-    }
+    return res.status(404).json({ error: 'Unknown sandbox host' })
 });
 export default app;
