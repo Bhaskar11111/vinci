@@ -22,7 +22,10 @@ export const createPod = async (sandboxId) => {
                     name:'init-container',
                     image:'template',
                     imagePullPolicy:'IfNotPresent',
-                    command: ['sh', '-c', 'cp -r /workspace/. /seed/'],
+                    // The workspace must be dependency-complete before Vite starts.
+                    // This is intentionally performed here (rather than trusting an
+                    // AI tool call) so every sandbox has Tailwind available.
+                    command: ['sh', '-c', 'cp -r /workspace/. /seed/ && cd /seed && npm install --no-audit --no-fund tailwindcss'],
                     volumeMounts:[
                         {
                             name:'workspace-volume',
