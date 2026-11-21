@@ -29,6 +29,14 @@ const ensureTailwind = async (updates = []) => {
     }
 }
 
+const validateProjectBuild = async () => {
+    await execFileAsync('npm', ['run', 'build'], {
+        cwd: WORKING_DIR,
+        timeout: 120000,
+        maxBuffer: 1024 * 1024
+    })
+}
+
 app.use(express.json())
 app.use(express.urlencoded({extended:true}))
 app.use(morgan('dev'))
@@ -145,27 +153,46 @@ app.patch('/update-files',(async(req,res)=>
         })
     }
 
-    const results=await Promise.all(updates.map(async(elem,indx)=>
-    {
-        const{file,content}=elem;
-        const filePath=path.join(WORKING_DIR,file)
-        try{
+    if (updates.some(({ content }) => /<\/?(?:bos|eos)>|<\|.*?\|>/.test(content))) {
+        return res.status(422).json({
+            message: 'Rejected invalid AI control tokens in source code',
+            status: 'error'
+        })
+    }
+
+    const originals = await Promise.all(updates.map(async ({ file }) => {
+        const filePath = path.join(WORKING_DIR, file)
+        try {
+            return { filePath, content: await fs.promises.readFile(filePath, 'utf-8') }
+        } catch (err) {
+            if (err.code === 'ENOENT') return { filePath, content: null }
+            throw err
+        }
+    }))
+
+    try {
+        const results=await Promise.all(updates.map(async({file, content}) => {
+            const filePath=path.join(WORKING_DIR,file)
             await fs.promises.writeFile(filePath,content,'utf-8')
             return{
                 [filePath]:'File updated successfully'
             }
-        }
-        catch(err){
-            return{
-                [filePath]:`Error updating file: ${err.message}`
-            }
-        }
-    }))
+        }))
 
-    res.status(200).json({
-        message:'File update results',
-        results
-    })
+        await validateProjectBuild()
+
+        return res.status(200).json({ message:'File update results', results })
+    } catch (err) {
+        await Promise.all(originals.map(async ({ filePath, content }) => {
+            if (content === null) return fs.promises.rm(filePath, { force: true })
+            return fs.promises.writeFile(filePath, content, 'utf-8')
+        }))
+
+        return res.status(422).json({
+            message: `Update rolled back because the project does not build: ${err.stderr || err.message}`,
+            status: 'error'
+        })
+    }
 
 }))
 
