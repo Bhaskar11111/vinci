@@ -10,6 +10,24 @@ const execFileAsync = promisify(execFile)
 const app=express();
 
 const WORKING_DIR='/workspace'
+const TAILWIND_IMPORT='@import "tailwindcss";'
+
+// Every generated project is Tailwind-ready.  This is deliberately enforced
+// by the sandbox rather than relying on the coding model to remember a setup
+// step before it writes CSS.
+const ensureTailwind = async (updates = []) => {
+    const cssUpdate = updates.find(({ file }) => file === 'src/index.css')
+
+    if (cssUpdate && !cssUpdate.content.includes('tailwindcss')) {
+        cssUpdate.content = `${TAILWIND_IMPORT}\n\n${cssUpdate.content}`
+    }
+
+    try {
+        await fs.promises.access(path.join(WORKING_DIR, 'node_modules', 'tailwindcss'))
+    } catch {
+        await execFileAsync('npm', ['install', 'tailwindcss'], { cwd: WORKING_DIR })
+    }
+}
 
 app.use(express.json())
 app.use(express.urlencoded({extended:true}))
@@ -115,6 +133,15 @@ app.patch('/update-files',(async(req,res)=>
         return res.status(400).json({
             message:'Invalid request body. Expected a JSON body with "updates" property containing an array of file updates',
             status:'error'
+        })
+    }
+
+    try {
+        await ensureTailwind(updates)
+    } catch (err) {
+        return res.status(500).json({
+            message: `Unable to prepare Tailwind CSS: ${err.message}`,
+            status: 'error'
         })
     }
 
