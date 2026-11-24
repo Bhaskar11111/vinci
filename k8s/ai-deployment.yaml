@@ -1,9 +1,10 @@
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name:  ai-deployment
+  name: ai-deployment
   labels:
-    name:  ai-deployment
+    name: ai-deployment
 spec:
   progressDeadlineSeconds: 1200
   replicas: 2
@@ -16,36 +17,36 @@ spec:
         app: ai-server
     spec:
       containers:
-      - image: ai-orchestration:latest
-        # These images are built into Docker Desktop by Skaffold/local builds.
-        # Do not try to retrieve the unqualified name from Docker Hub.
-        imagePullPolicy: IfNotPresent
-        name:  ai-server
-        resources:
-          requests:
-            cpu: "250m"
-            memory: "128M"
-          limits:
-            cpu: "500m"
-            memory: "256M"
-        env:
-          - name: GEMINI_API_KEY
-            valueFrom:
-              secretKeyRef:
-                name: ai-secret
-                key: GEMINI_API_KEY
-        livenessProbe:
-          httpGet:
-            path: /api/status/healthz
-            port: 3000
-          initialDelaySeconds: 90
-          timeoutSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /api/status/healthz
-            port: 3000
-          initialDelaySeconds: 30
-          timeoutSeconds: 10      
-        ports:
-        - containerPort:  3000
-          name:  ai-server-port
+        - image: ai-orchestration:gemini-25-flash-v4
+          imagePullPolicy: IfNotPresent
+          name: ai-server
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "128M"
+            limits:
+              cpu: "500m"
+              memory: "256M"
+          env:
+            - name: GEMINI_MODEL
+              value: gemini-2.5-flash
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-secret
+                  key: GEMINI_API_KEY
+          livenessProbe:
+            httpGet:
+              path: /api/status/healthz
+              port: 3000
+            initialDelaySeconds: 90
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/status/healthz
+              port: 3000
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+          ports:
+            - containerPort: 3000
+              name: ai-server-port

@@ -2,10 +2,18 @@ import express from 'express'
 import morgan from 'morgan'
 import { createPod } from './kubernetes/pod.js'
 import { createService } from './kubernetes/service.js'
+import { waitForSandboxReady } from './kubernetes/ready.js'
 import {v7 as uuid} from 'uuid'
 
 const app=express()
 
+app.use((req,res,next) => {
+    res.setHeader('Access-Control-Allow-Origin','*')
+    res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers','Content-Type')
+    if (req.method === 'OPTIONS') return res.sendStatus(204)
+    next()
+})
 app.use(express.json())
 app.use(morgan('dev'))
 app.use(express.urlencoded({extended:true}))
@@ -30,6 +38,7 @@ app.post('/api/sandbox/create',(async(req,res)=>
         createPod(sandboxId),
         createService(sandboxId)
     ])
+    await waitForSandboxReady(sandboxId)
 
     return res.status(201).json({
         message:'Sandbox environment created successfully',

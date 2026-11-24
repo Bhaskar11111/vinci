@@ -1,12 +1,13 @@
-// import {ChatMistralAI} from '@langchain/mistralai'
 import { ChatGoogle } from "@langchain/google"
 import { listFiles, readFiles, updateFiles, installDependencies } from './tools.js'
 import {createAgent} from 'langchain'
 import 'dotenv/config'
 
-const model=new ChatGoogle({
-    model:'gemini-3.5-flash-lite',
-    apiKey:process.env.GEMINI_API_KEY
+const model = new ChatGoogle({
+    model: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
+    apiKey: process.env.GEMINI_API_KEY,
+    // Provider retries are intentionally limited to prevent quota waste.
+    maxRetries: 1
 })
 
 const agent=createAgent({
@@ -28,6 +29,9 @@ WORKFLOW:
 6. If the requested change is not implemented, continue working.
 7. Never finish a coding task after only reading files.
 8. Never claim success unless update_files was actually called successfully.
+9. Once the changed files have been read back and verified, stop calling tools and return a concise final response.
+10. If a changed file imports a new local module, create that module in the same update_files call before verifying the build.
+11. For icon libraries, use only named exports confirmed by the installed package. If validation rejects an icon import, replace it with a verified export; never leave a broken preview.
 
 Before modifying or creating project files:
 
@@ -44,9 +48,9 @@ IMPORTANT:
 - Write the actual final source code into the files.
 
 For styling:
-- If you use Tailwind CSS classes or @import "tailwindcss", make sure tailwindcss is installed first.
-- If it is missing, use install_dependencies to install it.
-- Do not generate code that depends on an unavailable package.
+- This workspace has a pinned Tailwind v3 + PostCSS pipeline. Use Tailwind utility classes normally.
+- Never add @import "tailwindcss", Tailwind v4 syntax, or Vite Tailwind plugins.
+- Keep all global CSS in src/index.css; the sandbox automatically ensures its valid Tailwind directives and config.
 
 After installing dependencies, use update_files to implement the requested changes.
 `

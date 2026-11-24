@@ -20,12 +20,12 @@ export const createPod = async (sandboxId) => {
             initContainers:[
                 {
                     name:'init-container',
-                    image:'template',
+                    image:'template:tailwind-safe',
                     imagePullPolicy:'IfNotPresent',
                     // The workspace must be dependency-complete before Vite starts.
                     // This is intentionally performed here (rather than trusting an
                     // AI tool call) so every sandbox has Tailwind available.
-                    command: ['sh', '-c', 'cp -r /workspace/. /seed/ && cd /seed && npm install --no-audit --no-fund tailwindcss'],
+                    command: ['sh', '-c', 'cp -r /workspace/. /seed/ && cd /seed && npm install --no-audit --no-fund --save-dev tailwindcss@3.4.17 postcss@8.5.3 autoprefixer@10.4.21'],
                     volumeMounts:[
                         {
                             name:'workspace-volume',
@@ -37,7 +37,7 @@ export const createPod = async (sandboxId) => {
             ],
             containers: [
                 {
-                    image:'template',
+                    image:'template:tailwind-safe',
                     imagePullPolicy:'IfNotPresent',
                     name:'sandbox-container',
 
@@ -51,11 +51,11 @@ export const createPod = async (sandboxId) => {
                     resources: {
                         limits: {
                             cpu: '500m',
-                            memory: '1Gi'
+                            memory: '512Mi'
                         },
                         requests: {
-                            cpu: '250m',
-                            memory: '500Mi'
+                            cpu: '100m',
+                            memory: '192Mi'
                         }
                     },
                     volumeMounts:[
@@ -67,7 +67,7 @@ export const createPod = async (sandboxId) => {
                 },
 
                 {
-                        image: 'agent:latest',
+                        image: 'agent:tailwind-safe',
                         imagePullPolicy: 'IfNotPresent',
                         name: 'agent-container',
 
@@ -81,11 +81,11 @@ export const createPod = async (sandboxId) => {
                         resources: {
                             limits: {
                                 cpu: '500m',
-                                memory: '1Gi'
+                            memory: '512Mi'
                             },
                             requests: {
-                                cpu: '250m',
-                                memory: '500Mi'
+                            cpu: '100m',
+                            memory: '192Mi'
                             }
                         },
 

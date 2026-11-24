@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile)
 const app=express();
 
 const WORKING_DIR='/workspace'
-const TAILWIND_IMPORT='@import "tailwindcss";'
+const TAILWIND_DIRECTIVES='@tailwind base;\n@tailwind components;\n@tailwind utilities;'
 
 // Every generated project is Tailwind-ready.  This is deliberately enforced
 // by the sandbox rather than relying on the coding model to remember a setup
@@ -18,14 +18,32 @@ const TAILWIND_IMPORT='@import "tailwindcss";'
 const ensureTailwind = async (updates = []) => {
     const cssUpdate = updates.find(({ file }) => file === 'src/index.css')
 
-    if (cssUpdate && !cssUpdate.content.includes('tailwindcss')) {
-        cssUpdate.content = `${TAILWIND_IMPORT}\n\n${cssUpdate.content}`
+    if (cssUpdate) {
+        cssUpdate.content = cssUpdate.content
+            .replace(/@import\s+['"]tailwindcss['"];?\s*/g, '')
+        if (!cssUpdate.content.includes('@tailwind utilities')) {
+            cssUpdate.content = `${TAILWIND_DIRECTIVES}\n\n${cssUpdate.content}`
+        }
     }
 
     try {
-        await fs.promises.access(path.join(WORKING_DIR, 'node_modules', 'tailwindcss'))
+        const tailwindPackage = JSON.parse(await fs.promises.readFile(path.join(WORKING_DIR, 'node_modules', 'tailwindcss', 'package.json'), 'utf8'))
+        if (!tailwindPackage.version.startsWith('3.')) throw new Error('Tailwind v3 is required')
     } catch {
-        await execFileAsync('npm', ['install', 'tailwindcss'], { cwd: WORKING_DIR })
+        await execFileAsync('npm', ['install', '--save-dev', 'tailwindcss@3.4.17', 'postcss@8.5.3', 'autoprefixer@10.4.21'], { cwd: WORKING_DIR })
+    }
+
+    const postcssConfig = path.join(WORKING_DIR, 'postcss.config.js')
+    const tailwindConfig = path.join(WORKING_DIR, 'tailwind.config.js')
+    try {
+        await fs.promises.access(postcssConfig)
+    } catch {
+        await fs.promises.writeFile(postcssConfig, "export default { plugins: { tailwindcss: {}, autoprefixer: {} } }\n")
+    }
+    try {
+        await fs.promises.access(tailwindConfig)
+    } catch {
+        await fs.promises.writeFile(tailwindConfig, "export default { content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'], theme: { extend: {} }, plugins: [] }\n")
     }
 }
 
@@ -35,6 +53,41 @@ const validateProjectBuild = async () => {
         timeout: 120000,
         maxBuffer: 1024 * 1024
     })
+}
+
+// Vite's development optimizer can expose a missing named package export only
+// in the browser. Catch those imports before accepting an AI file update.
+const validateNamedPackageImports = async () => {
+    const sourceDir = path.join(WORKING_DIR, 'src')
+    const files = await fs.promises.readdir(sourceDir, { recursive: true })
+    const sourceFiles = files.filter(file => /\.[cm]?[jt]sx?$/.test(file))
+    const importPattern = /import\s*{([^}]+)}\s*from\s*['"]([^.'"][^'"]*)['"]/g
+
+    for (const relativeFile of sourceFiles) {
+        const content = await fs.promises.readFile(path.join(sourceDir, relativeFile), 'utf8')
+        for (const match of content.matchAll(importPattern)) {
+            const [, imported, packageName] = match
+            let exportedNames
+            try {
+                const { stdout } = await execFileAsync('node', [
+                    '-e',
+                    "const { createRequire } = require('node:module'); const requireFromWorkspace = createRequire(process.cwd() + '/package.json'); console.log(JSON.stringify(Object.keys(requireFromWorkspace(process.argv[1]))))",
+                    packageName
+                ], { cwd: WORKING_DIR, timeout: 15000 })
+                exportedNames = new Set(JSON.parse(stdout))
+            } catch (error) {
+                throw new Error(`Cannot load package "${packageName}" imported by src/${relativeFile}: ${error.message}`)
+            }
+            const missing = imported
+                .split(',')
+                .map(item => item.trim().split(/\s+as\s+/)[0].trim())
+                .filter(Boolean)
+                .filter(name => !exportedNames.has(name))
+            if (missing.length) {
+                throw new Error(`Invalid export from "${packageName}" in src/${relativeFile}: ${missing.join(', ')}`)
+            }
+        }
+    }
 }
 
 app.use(express.json())
@@ -47,6 +100,9 @@ app.get('/',(req,res)=>
         message:'Hello from sandbox agent',
         status:'success'
     })
+})
+app.get('/healthz', (req, res) => {
+    res.status(200).json({ status: 'ok' })
 })
 
 //list-files api (doesn't include node_modules, .git, dist, .env)
@@ -173,12 +229,14 @@ app.patch('/update-files',(async(req,res)=>
     try {
         const results=await Promise.all(updates.map(async({file, content}) => {
             const filePath=path.join(WORKING_DIR,file)
+            await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
             await fs.promises.writeFile(filePath,content,'utf-8')
             return{
                 [filePath]:'File updated successfully'
             }
         }))
 
+        await validateNamedPackageImports()
         await validateProjectBuild()
 
         return res.status(200).json({ message:'File update results', results })

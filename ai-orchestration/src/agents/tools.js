@@ -3,6 +3,9 @@ import {tool} from 'langchain';
 import * as z from 'zod';
 import { fi } from "zod/v4/locales";
 
+const sandboxUrl = (projectId, path) => `http://sandbox-service-${projectId}:3000${path}`
+const sandboxClient = axios.create({ timeout: 30000 })
+
 
 //list-files tool
 export const listFiles = tool(async ({}, config) => {
@@ -20,9 +23,7 @@ export const listFiles = tool(async ({}, config) => {
         
         writer('Listing files in project directory...\n')
 
-        const response = await axios.get(
-            `http://sandbox-service-${projectId}:3000/list-files`
-        )
+        const response = await sandboxClient.get(sandboxUrl(projectId, '/list-files'))
         writer('Files listed successfully. '+'Files: '+response.data.files.join(",")+'\n')
 
         // console.log('===========================')
@@ -39,7 +40,7 @@ export const listFiles = tool(async ({}, config) => {
         // console.log(error.response?.data)
         // console.log('===========================')
 
-        throw error
+        throw new Error(`Unable to list sandbox files: ${error.response?.data?.message || error.message}`)
     }
 },
 {
@@ -62,8 +63,7 @@ export const readFiles = tool(async ({ files },config) => {
 
     try {
             const projectId = config.context.projectId
-        const response = await axios.get(
-            `http://sandbox-service-${projectId}:3000/read-files?files=` + files.join(','))
+        const response = await sandboxClient.get(sandboxUrl(projectId, '/read-files?files=') + files.join(','))
 
             writer('Files read successfully.\n')
 
@@ -79,7 +79,7 @@ export const readFiles = tool(async ({ files },config) => {
         // console.log(error.response?.data)
         // console.log('===========================')
 
-        throw error
+        throw new Error(`Unable to read sandbox files: ${error.response?.data?.message || error.message}`)
     }
 }, {
     name: 'read_files',
@@ -103,12 +103,16 @@ export const updateFiles=tool(async({files},config)=>
     // console.log('FILES:', files)
     // console.log('===========================')
 
-    const response=await axios.patch(
-        `http://sandbox-service-${projectId}:3000/update-files`,
+    const response=await sandboxClient.patch(
+        sandboxUrl(projectId, '/update-files'),
         {
             updates: files
         }
     )
+    // The invoke route uses this authoritative signal to decide whether the
+    // request genuinely changed the workspace. A model's final text is not a
+    // reliable indication that the tool was called.
+    if (config.context?.mutationState) config.context.mutationState.updated = true
     writer('Files updated successfully.\n')
 
     return JSON.stringify({
@@ -142,8 +146,8 @@ export const installDependencies = tool(async ({ packages },config) => {
     try {
             const projectId = config.context.projectId
 
-        const response = await axios.post(
-            `http://sandbox-service-${projectId}:3000/install-dependencies`,
+        const response = await sandboxClient.post(
+            sandboxUrl(projectId, '/install-dependencies'),
             {
                 packages: packages
             }
@@ -165,7 +169,7 @@ export const installDependencies = tool(async ({ packages },config) => {
         console.log(error.response?.data)
         // console.log('===========================')
 
-        throw error
+        throw new Error(`Unable to install dependencies: ${error.response?.data?.message || error.message}`)
     }
 
 }, {
