@@ -17,7 +17,7 @@ spec:
         app: ai-server
     spec:
       containers:
-        - image: ai-orchestration:gemini-25-flash-v4
+        - image: ai-orchestration:gemini-38-flash-v1
           imagePullPolicy: IfNotPresent
           name: ai-server
           resources:
@@ -29,7 +29,7 @@ spec:
               memory: "256M"
           env:
             - name: GEMINI_MODEL
-              value: gemini-2.5-flash
+              value: gemini-3.8-flash
             - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:

@@ -4,7 +4,7 @@ import {createAgent} from 'langchain'
 import 'dotenv/config'
 
 const model = new ChatGoogle({
-    model: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
+    model: process.env.GEMINI_MODEL ?? 'gemini-3.8-flash',
     apiKey: process.env.GEMINI_API_KEY,
     // Provider retries are intentionally limited to prevent quota waste.
     maxRetries: 1

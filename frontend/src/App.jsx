@@ -1,153 +1,51 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createSandbox, streamAgent } from './api'
 
-const starter = ['Build a portfolio for a graphic designer', 'Create an inventory dashboard for a small shop', 'Make a landing page for a new developer tool']
-const Icon = ({ children }) => <span className="icon" aria-hidden="true">{children}</span>
-const time = value => new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' }).format(value)
-const duration = totalSeconds => {
-  const seconds = Math.max(0, totalSeconds)
-  if (seconds < 60) return `${seconds} second${seconds === 1 ? '' : 's'}`
-  const minutes = Math.floor(seconds / 60)
-  const remainder = seconds % 60
-  return `${minutes} min${minutes === 1 ? '' : 's'} ${remainder} second${remainder === 1 ? '' : 's'}`
-}
-function activityKind(text) {
-  const value = text.toLowerCase()
-  if (value.includes('error') || value.includes('failed')) return 'failure'
-  if (value.includes('success') || value.includes('updated successfully') || value.includes('installed successfully')) return 'success'
-  if (value.includes('updating') || value.includes('installing')) return 'write'
-  return 'read'
-}
-function activityUpdate(text, now) {
-  const clean = text.trim()
-  const listing = clean.match(/^Files listed successfully\.\s*Files:\s*(.*)$/is)
-  if (listing) return { id: 'list-files', label: 'Listed project files', status: 'success', files: listing[1].split(',').map(file => file.trim()).filter(Boolean), time: now }
-  if (/^Listing files in project directory/i.test(clean)) return { id: 'list-files', label: 'Listing files in project directory…', status: 'working', time: now }
-  if (/^Reading files/i.test(clean)) return { id: 'read-files', label: clean.replace(/\s+/g, ' '), status: 'working', time: now }
-  if (/^Files read successfully/i.test(clean)) return { id: 'read-files', label: 'Read project files', status: 'success', time: now }
-  if (/^Installing dependencies/i.test(clean)) return { id: 'install-dependencies', label: 'Installing dependencies…', status: 'working', time: now }
-  if (/^Dependencies installed successfully/i.test(clean)) return { id: 'install-dependencies', label: 'Installed dependencies', status: 'success', time: now }
-  if (/^Updating files/i.test(clean)) return { id: 'update-files', label: clean.replace(/\s+/g, ' '), status: 'working', time: now }
-  if (/^Files updated successfully/i.test(clean)) return { id: 'update-files', label: 'Updated project files', status: 'success', time: now }
-  return { id: `event-${clean}`, label: clean, status: activityKind(clean), time: now }
-}
-function mergeActivity(items, text) {
-  const next = activityUpdate(text, Date.now())
-  const index = items.findIndex(item => item.role === 'activity' && item.id === next.id)
-  if (index < 0) return [...items, { role: 'activity', ...next }]
-  const copy = [...items]
-  copy[index] = { ...copy[index], ...next, time: Date.now() }
-  return copy
-}
-function ActivityRow({ event }) {
-  const [filesOpen, setFilesOpen] = useState(false)
-  const kind = event.status || activityKind(event.text || event.label)
-  return <div className={`activity-row ${kind}`}><span className="activity-mark" /><div><div className="activity-content"><p>{event.label || event.text}</p>{event.files?.length ? <button className="files-toggle" onClick={() => setFilesOpen(open => !open)}>See {event.files.length} files <span>{filesOpen ? '⌃' : '⌄'}</span></button> : null}</div><time>{time(event.time)}</time></div>{filesOpen && <ul className="file-list">{event.files.map(file => <li key={file}>{file}</li>)}</ul>}</div>
-}
+const starters = ['Build a portfolio for a graphic designer', 'Create an inventory dashboard for a small shop', 'Make a landing page for a new developer tool']
+const S = { users: 'vinci:users', session: 'vinci:session', chats: email => `vinci:chats:${email}` }
+const get = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback } catch { return fallback } }
+const put = (key, value) => localStorage.setItem(key, JSON.stringify(value))
+const stamp = value => new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' }).format(value)
+const date = value => new Intl.DateTimeFormat([], { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
+const dur = s => s < 60 ? `${s} seconds` : `${Math.floor(s / 60)} min ${s % 60} seconds`
+const Icon = ({ children }) => <span className="icon">{children}</span>
 
-export default function App() {
-  const [prompt, setPrompt] = useState('')
-  const [project, setProject] = useState(null)
-  const [events, setEvents] = useState([])
-  const [busy, setBusy] = useState(false)
-  const [panel, setPanel] = useState('activity')
-  const [panelOpen, setPanelOpen] = useState(true)
-  const [panelWidth, setPanelWidth] = useState(() => Number(localStorage.getItem('vinci:context-width')) || 332)
-  const [navOpen, setNavOpen] = useState(false)
-  const [error, setError] = useState(null)
-  const [runStartedAt, setRunStartedAt] = useState(null)
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const [completedSeconds, setCompletedSeconds] = useState(null)
-  const composerRef = useRef()
-  const scrollRef = useRef()
+function Terms({ close, accept }) { return <div className="modal-backdrop"><section className="terms-modal"><button className="modal-close" onClick={close}>×</button><p className="auth-kicker">VINCI LEGAL</p><h2>Terms &amp; Conditions</h2><div className="terms-copy"><p>Vinci creates isolated development workspaces from your instructions. You are responsible for reviewing generated code, dependencies, and output before using it.</p><p>Do not submit secrets, unlawful content, or content you do not have the right to use. Previews are temporary local development environments.</p><p>By creating an account, you understand that AI output can be incomplete or incorrect and agree to use Vinci responsibly.</p></div><button className="auth-submit" onClick={accept}>Accept terms</button></section></div> }
 
-  useEffect(() => {
-    const saved = localStorage.getItem('vinci:last-project')
-    if (saved) { try { setProject(JSON.parse(saved)) } catch { localStorage.removeItem('vinci:last-project') } }
-  }, [])
-  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }) }, [events, busy])
-  useEffect(() => {
-    if (!busy || !runStartedAt) return undefined
-    const updateElapsed = () => setElapsedSeconds(Math.floor((Date.now() - runStartedAt) / 1000))
-    updateElapsed()
-    const interval = window.setInterval(updateElapsed, 1000)
-    return () => window.clearInterval(interval)
-  }, [busy, runStartedAt])
-
-  function beginPanelResize(event) {
-    if (window.innerWidth <= 850) return
-    event.preventDefault()
-    const initialX = event.clientX
-    const initialWidth = panelWidth
-    const resize = moveEvent => {
-      const nextWidth = Math.min(620, Math.max(280, initialWidth + initialX - moveEvent.clientX))
-      setPanelWidth(nextWidth)
-    }
-    const stop = () => {
-      window.removeEventListener('pointermove', resize)
-      window.removeEventListener('pointerup', stop)
-      setPanelWidth(width => {
-        localStorage.setItem('vinci:context-width', String(width))
-        return width
-      })
-    }
-    window.addEventListener('pointermove', resize)
-    window.addEventListener('pointerup', stop)
+function Auth({ done }) {
+  const register = location.pathname === '/register'; const [form, setForm] = useState({}), [terms, setTerms] = useState(false), [consent, setConsent] = useState(false), [error, setError] = useState('')
+  const change = e => setForm({ ...form, [e.target.name]: e.target.value })
+  const submit = e => { e.preventDefault(); const users = get(S.users, []); setError('')
+    if (register) { if (!form.fullName || !form.username || !form.email || !form.password || !form.confirm) return setError('Please complete all fields.'); if (form.password.length < 8) return setError('Password must be at least 8 characters.'); if (form.password !== form.confirm) return setError('Passwords do not match.'); if (!consent) return setError('Accept the Terms & Conditions to continue.'); if (users.some(u => u.email === form.email.toLowerCase() || u.username.toLowerCase() === form.username.toLowerCase())) return setError('Email or username is already registered.'); const user = { fullName: form.fullName, username: form.username, email: form.email.toLowerCase(), password: form.password, createdAt: new Date().toISOString() }; put(S.users, [...users, user]); put(S.session, user.email); done(user); return }
+    const identity = (form.identity || '').toLowerCase(); const user = users.find(u => (u.email === identity || u.username.toLowerCase() === identity) && u.password === form.password); if (!user) return setError('Email/username or password is incorrect.'); put(S.session, user.email); done(user)
   }
-
-  async function send() {
-    const message = prompt.trim()
-    if (!message || busy) return
-    setBusy(true); setError(null)
-    const startedAt = Date.now()
-    setRunStartedAt(startedAt); setElapsedSeconds(0); setCompletedSeconds(null)
-    setEvents(items => [...items, { role: 'user', text: message, time: Date.now() }])
-    setPrompt(''); setPanel('activity'); setPanelOpen(true)
-    try {
-      const result = await createSandbox()
-      const nextProject = { id: result.sandboxId, url: result.previewURL, prompt: message, createdAt: new Date().toISOString() }
-      setProject(nextProject); localStorage.setItem('vinci:last-project', JSON.stringify(nextProject))
-      await streamAgent({
-        message,
-        projectId: result.sandboxId,
-        onEvent(type, payload) {
-          if (type === 'error') throw Error(payload.error || 'Agent execution failed')
-          if (type === 'activity' && payload.text) {
-            setEvents(items => mergeActivity(items, payload.text))
-          }
-        },
-      })
-    } catch (caught) {
-      setError(caught.message)
-      setEvents(items => [...items, { role: 'error', text: caught.message, time: Date.now() }])
-    } finally {
-      setCompletedSeconds(Math.floor((Date.now() - startedAt) / 1000))
-      setBusy(false)
-    }
-  }
-  const chooseStarter = value => { setPrompt(value); composerRef.current?.focus() }
-  const projectName = project?.prompt || 'Untitled workspace'
-  const activityEvents = events.filter(event => event.role === 'activity')
-
-  return <div className={`shell ${panelOpen ? '' : 'panel-closed'}`} style={{ '--context-width': `${panelWidth}px` }}>
-    <aside className={`sidebar ${navOpen ? 'mobile-open' : ''}`}>
-      <div className="sidebar-top"><button className="wordmark" onClick={() => composerRef.current?.focus()}><span>V</span>VINCI</button><button className="new-task" onClick={() => composerRef.current?.focus()}><Icon>＋</Icon> New task <kbd>⌘ N</kbd></button></div>
-      <button className="search"><Icon>⌕</Icon><span>Search</span><kbd>⌘ K</kbd></button>
-      <nav><p className="nav-label">WORKSPACE</p><button className="nav-item active"><Icon>⌘</Icon>Vinci</button><button className="nav-item"><Icon>▦</Icon>Projects</button><button className="nav-item"><Icon>◌</Icon>Activity</button></nav>
-      <section className="recent"><p className="nav-label">RECENT</p>{project ? <button className="recent-item" onClick={() => { setPanel('preview'); setPanelOpen(true) }}><span className="recent-dot" />{projectName}</button> : <p className="empty-recent">No recent tasks</p>}</section>
-      <div className="account-wrap"><button className="account"><span className="initials">BM</span><span>Bhaskar Mishra<small>Personal workspace</small></span><Icon>···</Icon></button></div>
-    </aside>
-    <main className="workspace">
-      <header className="workspace-bar"><button className="mobile-menu" onClick={() => setNavOpen(!navOpen)}>☰</button><div><strong>{events.length ? projectName : 'New task'}</strong><span>{events.length ? 'Engineering workspace' : 'Vinci application agent'}</span></div><div className="bar-actions"><button onClick={() => { setPanelOpen(!panelOpen); setNavOpen(false) }}><Icon>▱</Icon></button><button><Icon>···</Icon></button></div></header>
-      <section className="conversation" ref={scrollRef}>
-        {!events.length ? <div className="empty-workspace"><div className="eyebrow"><span />READY TO BUILD</div><h1>Start with an idea.</h1><p>Describe what you want to make. Vinci will create an isolated workspace and turn it into a working application.</p><div className="suggestions">{starter.map(item => <button key={item} onClick={() => chooseStarter(item)}>{item}<Icon>↗</Icon></button>)}</div></div> : <div className="transcript">{events.map((event, index) => event.role === 'user' ? <article className="user-message" key={`${event.time}-${index}`}><div><span className="message-meta">YOU <time>{time(event.time)}</time></span><p>{event.text}</p></div></article> : event.role === 'error' ? <article className="error-message" key={`${event.time}-${index}`}><span>Build interrupted</span><p>{event.text}</p></article> : <ActivityRow event={event} key={`${event.time}-${index}`} />)}{busy && <div className="working"><span className="pulse" />Working for {duration(elapsedSeconds)}<em>streaming live activity</em></div>}{!busy && completedSeconds !== null && <div className="worked-for"><span>✓</span> Worked for {duration(completedSeconds)} <em>{error ? 'task interrupted' : 'task complete'}</em></div>}</div>}
-      </section>
-      <div className="composer-area"><div className="composer"><textarea ref={composerRef} value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') send() }} placeholder="Describe what you want to build…" rows="3" /><footer><div><button className="attach"><Icon>＋</Icon></button><span>{project ? 'Workspace context attached' : 'New isolated workspace'}</span></div><div><kbd>⌘ ↵</kbd><button className="send" disabled={!prompt.trim() || busy} onClick={send}>↑</button></div></footer></div></div>
-    </main>
-    <aside className="context-panel">
-      <div className="panel-resizer" onPointerDown={beginPanelResize} role="separator" aria-label="Resize context panel" aria-orientation="vertical" />
-      <header><div className="panel-tabs"><button className={panel === 'activity' ? 'selected' : ''} onClick={() => setPanel('activity')}>Activity</button><button className={panel === 'preview' ? 'selected' : ''} onClick={() => setPanel('preview')}>Preview</button></div><button className="close-panel" onClick={() => setPanelOpen(false)}>×</button></header>
-      {panel === 'preview' && project ? <div className="preview"><div className="preview-toolbar"><span><i /> localhost</span><a href={project.url} target="_blank" rel="noreferrer">Open ↗</a></div><iframe title="Live project preview" src={project.url} /></div> : <div className="activity-panel">{project ? <><div className="project-state"><span className={busy ? 'state-building' : 'state-ready'}>{busy ? `WORKING FOR ${duration(elapsedSeconds)}` : 'WORKSPACE READY'}</span><h2>{projectName}</h2><p className="project-id">{project.id}</p>{!busy && completedSeconds !== null && <p className="project-duration">Worked for {duration(completedSeconds)}</p>}</div><div className="activity-heading"><span>LIVE EXECUTION</span><small>{activityEvents.length} events</small></div><div className="activity-list">{activityEvents.length ? activityEvents.map((event, index) => <ActivityRow event={event} key={`${event.time}-side-${index}`} />) : <p className="waiting">Waiting for agent activity…</p>}</div>{error && <details open><summary>Technical details</summary><pre>{error}</pre></details>}</> : <div className="panel-empty"><div className="panel-grid">⌘</div><h2>Project context</h2><p>Activity, build details, and a live preview will appear here when you start a task.</p></div>}</div>}
-    </aside>
-  </div>
+  return <main className="auth-page"><div className="auth-brand"><span>V</span> VINCI</div><section className="auth-card"><p className="auth-kicker">{register ? 'CREATE YOUR WORKSPACE' : 'WELCOME BACK'}</p><h1>{register ? 'Start building with Vinci.' : 'Sign in to Vinci.'}</h1><p className="auth-lead">{register ? 'Your personal AI development workspace is ready when you are.' : 'Continue your workspaces and conversations.'}</p><form onSubmit={submit}>{register ? <><label>Full name<input name="fullName" onChange={change} autoComplete="name" /></label><label>Username<input name="username" onChange={change} autoComplete="username" /></label><label>Email<input name="email" type="email" onChange={change} autoComplete="email" /></label></> : <label>Email or username<input name="identity" onChange={change} autoComplete="username" /></label>}<label>Password<input name="password" type="password" onChange={change} autoComplete={register ? 'new-password' : 'current-password'} /></label>{register && <><label>Confirm password<input name="confirm" type="password" onChange={change} autoComplete="new-password" /></label><label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /><span>I agree to the <button type="button" onClick={() => setTerms(true)}>Terms &amp; Conditions</button>.</span></label></>}{error && <p className="auth-error">{error}</p>}<button className="auth-submit">{register ? 'Create account' : 'Log in'} <span>→</span></button></form><p className="auth-switch">{register ? 'Already have an account?' : 'New to Vinci?'} <a href={register ? '/login' : '/register'}>{register ? 'Log in' : 'Create an account'}</a></p></section>{terms && <Terms close={() => setTerms(false)} accept={() => { setConsent(true); setTerms(false) }} />}</main>
 }
+
+function step(text) { const t = text.trim(), list = t.match(/^Files listed successfully\.\s*Files:\s*(.*)$/is); if (list) return { id: 'list', label: 'Listed project files', status: 'success', files: list[1].split(',').map(x => x.trim()).filter(Boolean) }; if (/^Listing files/i.test(t)) return { id: 'list', label: 'Listing files in project directory…', status: 'working' }; if (/^Reading files/i.test(t)) return { id: 'read', label: t, status: 'working' }; if (/^Files read/i.test(t)) return { id: 'read', label: 'Read project files', status: 'success' }; if (/^Updating files/i.test(t)) return { id: 'update', label: t, status: 'working' }; if (/^Files updated/i.test(t)) return { id: 'update', label: 'Updated project files', status: 'success' }; if (/Installing/i.test(t)) return { id: 'install', label: t, status: 'working' }; if (/installed successfully/i.test(t)) return { id: 'install', label: 'Installed dependencies', status: 'success' }; return { id: `event-${t}`, label: t, status: 'read' } }
+function Activity({ event }) { const [open, setOpen] = useState(false); return <div className={`activity-row ${event.status}`}><span className="activity-mark" /><div><div className="activity-content"><p>{event.label}</p>{event.files?.length ? <button className="files-toggle" onClick={() => setOpen(!open)}>See {event.files.length} files {open ? '⌃' : '⌄'}</button> : null}</div><time>{stamp(event.time)}</time></div>{open && <ul className="file-list">{event.files.map(file => <li key={file}>{file}</li>)}</ul>}</div> }
+
+function Vinci({ user, logout }) {
+  const [chats, setChats] = useState(() => get(S.chats(user.email), [])); const [activeId, setActiveId] = useState(null); const [prompt, setPrompt] = useState(''); const [busy, setBusy] = useState(false); const [elapsed, setElapsed] = useState(0); const [view, setView] = useState('workspace'); const [search, setSearch] = useState(false); const [query, setQuery] = useState(''); const [account, setAccount] = useState(false)
+  const ref = useRef(), scroll = useRef(); const active = chats.find(c => c.id === activeId) || null
+  useEffect(() => { put(S.chats(user.email), chats) }, [chats, user.email])
+  useEffect(() => {
+    if (!busy) return undefined
+    const started = Date.now()
+    const tick = () => setElapsed(Math.floor((Date.now() - started) / 1000))
+    tick()
+    const id = window.setInterval(tick, 1000)
+    return () => window.clearInterval(id)
+  }, [busy])
+  useEffect(() => {
+    scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: 'smooth' })
+  }, [active?.events?.length, busy])
+  const patch = (id, apply) => setChats(all => all.map(c => c.id === id ? apply(c) : c)); const fresh = () => { setActiveId(null); setView('workspace'); setPrompt(''); ref.current?.focus() }
+  async function send() { const message = prompt.trim(); if (!message || busy) return; let chat = active; if (!chat) { chat = { id: crypto.randomUUID(), title: message, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), project: null, events: [] }; setChats(all => [chat, ...all]); setActiveId(chat.id) }; const id = chat.id; patch(id, c => ({ ...c, events: [...c.events, { role: 'user', text: message, time: Date.now() }], updatedAt: new Date().toISOString() })); setPrompt(''); setBusy(true)
+    try { let project = chat.project; if (!project) { const response = await createSandbox(); project = { id: response.sandboxId, url: response.previewURL }; patch(id, c => ({ ...c, project })) } await streamAgent({ message, projectId: project.id, onEvent(type, data) { if (type === 'error') throw Error(data.error || 'Agent execution failed'); if (type === 'activity' && data.text) patch(id, c => { const next = { role: 'activity', ...step(data.text), time: Date.now() }, index = c.events.findIndex(e => e.role === 'activity' && e.id === next.id), events = [...c.events]; index < 0 ? events.push(next) : events[index] = next; return { ...c, events, updatedAt: new Date().toISOString() } }) } }) } catch (e) { patch(id, c => ({ ...c, events: [...c.events, { role: 'error', text: e.message, time: Date.now() }] })) } finally { setBusy(false) } }
+  const initials = user.fullName.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase(); const list = useMemo(() => chats.filter(c => c.title.toLowerCase().includes(query.toLowerCase())), [chats, query]); const activity = chats.flatMap(c => c.events.filter(e => e.role !== 'user').map(e => ({ ...e, title: c.title }))).slice(-20).reverse()
+  const directory = view === 'projects' ? <section className="directory-view"><p className="eyebrow"><span />PROJECTS</p><h1>All projects</h1><p>Every Vinci workspace, ready to reopen and continue.</p><div className="project-table">{chats.length ? chats.map(c => <button key={c.id} onClick={() => { setActiveId(c.id); setView('workspace') }}><span className="recent-dot" /><strong>{c.title}</strong><time>{date(c.updatedAt)}</time><em>{c.project ? 'Workspace ready' : 'Draft'}</em><i>↗</i></button>) : <div className="nothing">No projects yet. Start with a new task.</div>}</div></section> : view === 'activity' ? <section className="directory-view"><p className="eyebrow"><span />ACTIVITY</p><h1>Workspace activity</h1><p>Your latest build and agent events across all projects.</p><div className="project-table activity-feed">{activity.length ? activity.map((e, i) => <div key={i}><span className={e.role === 'error' ? 'feed-error' : 'recent-dot'} /><strong>{e.title}</strong><p>{e.label || e.text}</p><time>{date(e.time)} · {stamp(e.time)}</time></div>) : <div className="nothing">Your activity will appear here.</div>}</div></section> : null
+  return <div className="shell app-shell"><aside className="sidebar"><div className="sidebar-top"><button className="wordmark" onClick={fresh}><span>V</span>VINCI</button><button className="new-task" onClick={fresh}><Icon>＋</Icon> New task <kbd>⌘ N</kbd></button></div><button className="search" onClick={() => setSearch(true)}><Icon>⌕</Icon>Search<kbd>⌘ K</kbd></button><nav><p className="nav-label">WORKSPACE</p><button className={`nav-item ${view === 'workspace' ? 'active' : ''}`} onClick={() => setView('workspace')}><Icon>⌘</Icon>Vinci</button><button className={`nav-item ${view === 'projects' ? 'active' : ''}`} onClick={() => setView('projects')}><Icon>▦</Icon>Projects</button><button className={`nav-item ${view === 'activity' ? 'active' : ''}`} onClick={() => setView('activity')}><Icon>◌</Icon>Activity</button></nav><section className="recent"><p className="nav-label">RECENT</p>{chats.slice(0, 8).map(c => <button key={c.id} className={`recent-item ${c.id === activeId ? 'current' : ''}`} onClick={() => { setActiveId(c.id); setView('workspace') }}><span className="recent-dot" />{c.title}</button>)}{!chats.length && <p className="empty-recent">No recent tasks</p>}</section><div className="account-wrap"><div className="account-menu"><button className="account" onClick={() => setAccount(!account)}><span className="initials">{initials}</span><span>{user.email}<small>Personal workspace</small></span><Icon>···</Icon></button>{account && <button className="logout" onClick={logout}>Log out <span>↗</span></button>}</div></div></aside><main className="workspace"><header className="workspace-bar"><div><strong>{active?.title || 'New task'}</strong><span>{view === 'workspace' ? 'Engineering workspace' : 'Personal workspace'}</span></div><div className="bar-actions">{active?.project && <button onClick={() => window.open(active.project.url, '_blank')}><Icon>▱</Icon></button>}</div></header>{directory || <><section className="conversation" ref={scroll}>{!active?.events.length ? <div className="empty-workspace"><div className="eyebrow"><span />READY TO BUILD</div><h1>Start with an idea.</h1><p>Describe what you want to make. Vinci will create an isolated workspace and turn it into a working application.</p><div className="suggestions">{starters.map(x => <button key={x} onClick={() => { setPrompt(x); ref.current?.focus() }}>{x}<Icon>↗</Icon></button>)}</div></div> : <div className="transcript">{active.events.map((e, i) => e.role === 'user' ? <article className="user-message" key={i}><span className="message-meta">YOU <time>{stamp(e.time)}</time></span><p>{e.text}</p></article> : e.role === 'error' ? <article className="error-message" key={i}><span>Build interrupted</span><p>{e.text}</p></article> : <Activity event={e} key={`${e.id}-${i}`} />)}{busy && <div className="working"><span className="pulse" />Working for {dur(elapsed)}<em>streaming live activity</em></div>}</div>}</section><div className="composer-area"><div className="composer"><textarea ref={ref} rows="3" value={prompt} onChange={e => setPrompt(e.target.value)} onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') send() }} placeholder="Describe what you want to build…"/><footer><span>{active?.project ? 'Workspace context attached' : 'New isolated workspace'}</span><div><kbd>⌘ ↵</kbd><button className="send" disabled={!prompt.trim() || busy} onClick={send}>↑</button></div></footer></div></div></>}</main>{search && <div className="modal-backdrop"><section className="search-modal"><button className="modal-close" onClick={() => setSearch(false)}>×</button><p className="auth-kicker">SEARCH WORKSPACES</p><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search conversations…"/><div className="search-results">{list.length ? list.map(c => <button key={c.id} onClick={() => { setActiveId(c.id); setView('workspace'); setSearch(false) }}><span className="recent-dot" />{c.title}<time>{date(c.updatedAt)}</time></button>) : <p>No matching conversations.</p>}</div></section></div>}</div>
+}
+
+export default function App() { const [user, setUser] = useState(() => { const email = localStorage.getItem(S.session); return get(S.users, []).find(x => x.email === email) || null }); const done = user => { setUser(user); history.replaceState({}, '', '/') }; const logout = () => { localStorage.removeItem(S.session); setUser(null); history.replaceState({}, '', '/login') }; return user ? <Vinci user={user} logout={logout} /> : <Auth done={done} /> }
