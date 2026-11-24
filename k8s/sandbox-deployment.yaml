@@ -16,7 +16,7 @@ spec:
     spec:
       serviceAccountName: resource-manager
       containers:
-      - image: sandbox:frontend-cors
+      - image: sandbox:sandbox-ready-v2
         imagePullPolicy: IfNotPresent
         name:  sandbox-container
         resources:

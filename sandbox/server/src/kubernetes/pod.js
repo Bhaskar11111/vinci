@@ -11,6 +11,10 @@ export const createPod = async (sandboxId) => {
         },
 
         spec: {
+            // Sandboxes are intentionally ephemeral. Without an expiry, abandoned
+            // previews eventually exhaust the local Kubernetes node and prevent
+            // every later workspace from scheduling.
+            activeDeadlineSeconds: 7200,
             volumes:[
                 {
                     name:'workspace-volume',
@@ -20,12 +24,13 @@ export const createPod = async (sandboxId) => {
             initContainers:[
                 {
                     name:'init-container',
-                    image:'template:tailwind-safe',
+                    image:'template:sandbox-ready-v2',
                     imagePullPolicy:'IfNotPresent',
-                    // The workspace must be dependency-complete before Vite starts.
-                    // This is intentionally performed here (rather than trusting an
-                    // AI tool call) so every sandbox has Tailwind available.
-                    command: ['sh', '-c', 'cp -r /workspace/. /seed/ && cd /seed && npm install --no-audit --no-fund --save-dev tailwindcss@3.4.17 postcss@8.5.3 autoprefixer@10.4.21'],
+                    // The template image already contains a dependency-complete
+                    // workspace. Copying it is deterministic and avoids a network
+                    // install on every sandbox creation (which caused readiness to
+                    // time out under a slow/offline registry connection).
+                    command: ['sh', '-c', 'cp -a /workspace/. /seed/'],
                     volumeMounts:[
                         {
                             name:'workspace-volume',
@@ -37,7 +42,7 @@ export const createPod = async (sandboxId) => {
             ],
             containers: [
                 {
-                    image:'template:tailwind-safe',
+                    image:'template:sandbox-ready-v2',
                     imagePullPolicy:'IfNotPresent',
                     name:'sandbox-container',
 

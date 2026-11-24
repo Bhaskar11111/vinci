@@ -49,14 +49,36 @@ agentRouter.post('/invoke', async (req, res) => {
             }
         }
 
-        await runAgent(message)
+        const isTransientProviderError = error => {
+            const status = error?.status || error?.response?.status
+            const detail = String(error?.message || error?.response?.data?.error || '').toLowerCase()
+            return status === 429 || status === 503 || /high demand|temporar|overload|rate limit|resource exhausted/.test(detail)
+        }
+        const runWithRetry = async instruction => {
+            let lastError
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+                try { return await runAgent(instruction) }
+                catch (error) {
+                    lastError = error
+                    // Retrying after writes can duplicate a mutation. Only repeat a
+                    // pristine provider request, which is the failure mode here.
+                    if (!isTransientProviderError(error) || mutationState.updated || attempt === 2) throw error
+                    const seconds = 2 ** (attempt + 1)
+                    res.write(`event: activity\ndata: ${JSON.stringify({ text: `Model capacity is busy. Retrying automatically in ${seconds}s…` })}\n\n`)
+                    await new Promise(resolve => setTimeout(resolve, seconds * 1000))
+                }
+            }
+            throw lastError
+        }
+
+        await runWithRetry(message)
 
         // Some providers can return a final text response directly after an
         // inspection tool. Give that exact run one focused continuation, not a
         // broad retry loop. This makes the mutation contract deterministic
         // while avoiding repeated calls that burn the user's quota.
         if (!mutationState.updated) {
-            await runAgent(`Continue this coding task: "${message}". The previous pass only inspected the workspace and did not modify it. Do not call list_files again. Read the relevant existing files, then call update_files with the complete implementation now. Do not return a final answer until update_files succeeds.`)
+            await runWithRetry(`Continue this coding task: "${message}". The previous pass only inspected the workspace and did not modify it. Do not call list_files again. Read the relevant existing files, then call update_files with the complete implementation now. Do not return a final answer until update_files succeeds.`)
         }
 
         if (!mutationState.updated) {

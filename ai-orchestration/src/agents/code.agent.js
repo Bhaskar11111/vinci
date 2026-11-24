@@ -6,8 +6,9 @@ import 'dotenv/config'
 const model = new ChatGoogle({
     model: process.env.GEMINI_MODEL ?? 'gemini-3.8-flash',
     apiKey: process.env.GEMINI_API_KEY,
-    // Provider retries are intentionally limited to prevent quota waste.
-    maxRetries: 1
+    // Transient 429/503 capacity spikes are common with shared model capacity.
+    // Let the SDK retry the individual provider call before the request fails.
+    maxRetries: 4
 })
 
 const agent=createAgent({

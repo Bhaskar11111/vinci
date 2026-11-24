@@ -30,21 +30,22 @@ app.get('/api/sandbox/health',(req,res)=>
 
 
 //sandbox create api
-app.post('/api/sandbox/create',(async(req,res)=>
-{
-    const sandboxId=uuid();
-
-    await Promise.all([
-        createPod(sandboxId),
-        createService(sandboxId)
-    ])
-    await waitForSandboxReady(sandboxId)
-
-    return res.status(201).json({
-        message:'Sandbox environment created successfully',
-        sandboxId,
-        previewURL:`http://${sandboxId}.preview.localhost`
-    })
-}))
+app.post('/api/sandbox/create', async (req, res) => {
+    const sandboxId = uuid()
+    try {
+        await Promise.all([createPod(sandboxId), createService(sandboxId)])
+        await waitForSandboxReady(sandboxId)
+        return res.status(201).json({
+            message: 'Sandbox environment created successfully',
+            sandboxId,
+            previewURL: `http://${sandboxId}.preview.localhost`
+        })
+    } catch (error) {
+        console.error(`Sandbox ${sandboxId} could not start`, error)
+        return res.status(503).json({
+            error: 'Workspace could not start. Please try again in a moment.'
+        })
+    }
+})
 
 export default app;
